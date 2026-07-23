@@ -1,0 +1,15 @@
+# build artifacts
+/blib/
+/Makefile
+/Makefile.old
+/MYMETA.*
+/pm_to_blib
+/PDL-IO-NYHead-*/
+*.tar.gz
+# macOS
+.DS_Store
+# editor
+*~
+*.bak
+# temporary files
+/download/

@@ -1,0 +1,18 @@
+Revision history for PDL-IO-NYHead
+
+0.01  2026-07-23
+    - Initial standalone release, split out of the PDL-EEG project.
+    - PDL::IO::NYHead: OO reader for the New York Head (sa_nyhead.mat,
+      MATLAB v7.3/HDF5). Electrodes (labels + positions), leadfield
+      (V_fem / V_fem_normal), head and cortex surfaces, low-resolution
+      cortex reconstruction via in_from_cortex75K (PDL fancy index),
+      Harvard-Oxford atlas, coordinate transforms, nearest-vertex.
+    - Mesh export: to_obj / to_usda / write_mesh (thin wrappers over
+      surface()/cortex()). OBJ keeps 1-based faces; USDA emits 0-based
+      faceVertexIndices. examples/nyhead_export.pl with --format obj|usda.
+    - PDL::IO::NYHead::H5Dump: reads MATLAB v7.3 cell-of-string fields
+      (electrode / atlas names) that PDL::IO::HDF5 leaves as unresolved
+      object references, via the h5dump CLI. Version-independent #refs#
+      delimiter (no dependence on the h5dump object-id output format).
+    - Bundled synthetic MATLAB v7.3 fixture so the test suite runs
+      without the (large) real sa_nyhead.mat.

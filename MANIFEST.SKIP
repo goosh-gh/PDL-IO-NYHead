@@ -1,0 +1,12 @@
+^\.git/
+(^|/)\.gitignore$
+(^|/)\.DS_Store$
+^blib/
+^Makefile$
+^Makefile\.old$
+^MYMETA\.
+^pm_to_blib$
+^PDL-IO-NYHead-
+\.tar\.gz$
+~$
+\.bak$
