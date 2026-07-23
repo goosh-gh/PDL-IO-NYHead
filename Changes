@@ -1,6 +1,6 @@
 Revision history for PDL-IO-NYHead
 
-0.01  2026-07-23
+0.02  2026-07-23
     - Initial standalone release, split out of the PDL-EEG project.
     - PDL::IO::NYHead: OO reader for the New York Head (sa_nyhead.mat,
       MATLAB v7.3/HDF5). Electrodes (labels + positions), leadfield
