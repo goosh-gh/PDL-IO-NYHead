@@ -49,9 +49,10 @@ cell-of-strings helper.
 
     my $iv = $ny->nearest_vertex($pos, 'head'); # each electrode -> scalp vertex
 
-    # export a surface to OBJ / USDA
+    # export a surface to OBJ / USDA (USDA is Z-up MNI mm)
     $ny->write_mesh('cortex75K', 'obj',  'cortex.obj');
     $ny->write_mesh('head',      'usda', 'head.usda');
+    $ny->write_mesh('cortex10K', 'usda', 'cortex.usda', axes => 90); # + XYZ axis triad
 
 ## Axis convention
 
@@ -61,7 +62,17 @@ come back as `(N,3)` / `(Nf,3)` directly (no transpose). `tri` is 1-based
 (kept for OBJ export; `tri0` is the 0-based copy). `V_fem_normal` is
 `(electrode, source)`.
 
+USDA export carries `upAxis = "Z"` and `metersPerUnit = 0.001` (the New York
+Head is Z-up, millimetres), so a surface stands upright in usdview / Keynote.
+`write_mesh($surf, 'usda', $out, axes => <mm>)` adds an origin axis triad at the
+MNI origin (red = +X, green = +Y, blue = +Z); the default (`axes => 0`) writes
+the mesh alone. `examples/nyhead_export.pl --format usda --axes <mm>` is the CLI.
+
 ## See also
+
+`examples/nyhead_export.pl` — export any surface to OBJ or USDA
+(`--format obj|usda`, `--surf head|cortexNK`, `--axes <mm>` for a USDA axis
+triad).
 
 `examples/check_nyhead.pl` — runs the full reader against a real
 `sa_nyhead.mat` and prints a summary with PASS/FAIL structural checks.

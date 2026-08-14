@@ -22,12 +22,13 @@ use Getopt::Long;
 use File::Basename qw(basename);
 use PDL::IO::NYHead;
 
-my ($format, $surf, $out, $h5dump) = ('obj', 'head', undef, 'h5dump');
+my ($format, $surf, $out, $h5dump, $axes) = ('obj', 'head', undef, 'h5dump', 0);
 GetOptions(
     'format=s' => \$format,
     'surf=s'   => \$surf,
     'o|out=s'  => \$out,
     'h5dump=s' => \$h5dump,
+    'axes=f'   => \$axes,     # USDA のみ: 原点から長さ <mm> の xyz 軸を併記(0=なし, 既定)
 ) or die "bad args\n";
 my $file = shift or die <<"USAGE";
 usage: $0 [--format obj|usda] [--surf NAME] [-o OUT] <sa_nyhead.mat>
@@ -44,5 +45,5 @@ my $m = $ny->mesh($surf);
 printf "surf=%s  vertices=%d  faces=%d  ->  %s (%s)\n",
     $surf, $m->{vc}->dim(0), $m->{tri}->dim(0), $out, $format;
 
-$ny->write_mesh($surf, $format, $out);
+$ny->write_mesh($surf, $format, $out, axes => $axes);
 print "done.\n";

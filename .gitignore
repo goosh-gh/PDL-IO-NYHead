@@ -13,3 +13,4 @@
 *.bak
 # temporary files
 /download/
+/t/data/

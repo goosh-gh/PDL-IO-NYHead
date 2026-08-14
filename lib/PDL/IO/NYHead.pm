@@ -195,30 +195,46 @@ sub to_obj {
 
 # ---- .usda 書き出し(USD は 0-based。faceVertexIndices は tri-1) -----------
 sub to_usda {
-    my ($self, $name, $out) = @_;
+    my ($self, $name, $out, %opt) = @_;
+    my $axes = $opt{axes} // 0;   # >0 で原点から長さ axes(mm) の xyz 軸(赤=X/緑=Y/青=Z)を併記。0=軸なし(既定)
     my $m   = $self->mesh($name);
     my $nv  = $m->{vc}->dim(0);
     my $nf  = $m->{tri}->dim(0);
     my @v   = $m->{vc}->xchg(0,1)->flat->list;
     my @idx = (long($m->{tri}) - 1)->xchg(0,1)->flat->list;   # 0-based
     my $fh  = _open_out($out);
-    print  $fh "#usda 1.0\n\ndef Xform \"NYHead\"\n{\n    def Mesh \"$name\"\n    {\n";
+    # MNI/NY Head は Z-up・mm。USD 既定(Y-up, m)のままだと頭が横倒し・軸が変になるので明示。
+    print  $fh "#usda 1.0\n(\n    upAxis = \"Z\"\n    metersPerUnit = 0.001\n)\n\ndef Xform \"NYHead\"\n{\n    def Mesh \"$name\"\n    {\n";
     print  $fh "        int[] faceVertexCounts = [", join(",", (3) x $nf), "]\n";
     print  $fh "        int[] faceVertexIndices = [", join(",", @idx), "]\n";
     print  $fh "        point3f[] points = [",
                join(",", map { sprintf "(%.6f,%.6f,%.6f)", @v[3*$_,3*$_+1,3*$_+2] } 0..$nv-1),
                "]\n";
-    print  $fh "    }\n}\n";
+    print  $fh "    }\n";
+    if ($axes > 0) {
+        my ($L, $W) = ($axes, $axes / 50);   # MNI mm フレーム。head 半径相当は ~90
+        print $fh <<"USDA";
+    def BasisCurves "Axes"
+    {
+        uniform token type = "linear"
+        int[] curveVertexCounts = [2, 2, 2]
+        point3f[] points = [(0,0,0),($L,0,0), (0,0,0),(0,$L,0), (0,0,0),(0,0,$L)]
+        color3f[] primvars:displayColor = [(1,0,0),(0,1,0),(0,0,1)] (interpolation = "uniform")
+        float[] widths = [$W] (interpolation = "constant")
+    }
+USDA
+    }
+    print  $fh "}\n";
     close $fh;
     return $out;
 }
 
 # フォーマット分岐(スクリプトの --format はこれを呼ぶ)
 sub write_mesh {
-    my ($self, $name, $format, $out) = @_;
+    my ($self, $name, $format, $out, %opt) = @_;
     $format = lc $format;
-    return $self->to_obj($name, $out)  if $format eq 'obj';
-    return $self->to_usda($name, $out) if $format eq 'usda';
+    return $self->to_obj($name, $out)        if $format eq 'obj';
+    return $self->to_usda($name, $out, %opt) if $format eq 'usda';
     croak "write_mesh: unknown format '$format' (obj|usda)";
 }
 
