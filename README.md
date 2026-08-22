@@ -74,5 +74,18 @@ the mesh alone. `examples/nyhead_export.pl --format usda --axes <mm>` is the CLI
 (`--format obj|usda`, `--surf head|cortexNK`, `--axes <mm>` for a USDA axis
 triad).
 
+`examples/nyhead_mri_to_nii.pl` — export the New York Head MRI volume
+(`/sa/mri`) to NIfTI-1. Writes an MNI `sform` (`sform_code = 4`) and streams the
+voxels through PDL's data pointer (`get_dataref`, no intermediate Perl list);
+`--dtype float32` halves the file. The written `.nii` reads back identically in
+both nibabel and `PDL::IO::BIDS` (affine and voxel↔world round-trip verified).
+
+`examples/nyhead_ear_usda.pl` — write the scalp, the three BEM shells and a set
+of electrode / marker spheres to one `.usda` for usdview / Keynote / Blender.
+The skin (`/sa/head`) is a see-through `BasisCurves` wireframe cage, the BEM
+shells (`/#refs#/b,c,d`) are solid opaque meshes, the electrodes translucent
+spheres, and named target / candidate points opaque spheres, with an optional
+XYZ axis triad. `upAxis = "Z"`, `metersPerUnit = 0.001`.
+
 `examples/check_nyhead.pl` — runs the full reader against a real
 `sa_nyhead.mat` and prints a summary with PASS/FAIL structural checks.
