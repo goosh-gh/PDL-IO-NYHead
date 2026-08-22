@@ -16,7 +16,7 @@
 #   perl nyhead_ear_usda.pl --mat ~/src/NYHead/sa_nyhead.mat -o ear.usda
 #   perl nyhead_ear_usda.pl --self-test -o /tmp/st.usda      # 合成データで書式確認(.mat不要)
 #   perl nyhead_ear_usda.pl ... --ear "-65,-25,-60" --candidate LPA,Ex19
-#   perl nyhead_ear_usda.pl ... --no-bem                     # BEM 読めない時は skin+球だけ
+#   perl nyhead_ear_usda.pl ... --no-bem-shells              # BEM 読めない時は skin+球だけ
 #
 # 依存: PDL, PDL::IO::HDF5(--self-test 時は不要)。
 use strict;
@@ -43,7 +43,7 @@ GetOptions(
     'mat=s'=>\$o{mat}, 'skin=s'=>\$o{skin}, 'bem=s'=>\$o{bem}, 'out|o=s'=>\$o{out},
     'ear=s'=>\$o{ear}, 'target=s'=>\$o{target}, 'candidate=s'=>\$o{candidate},
     'elec-r=f'=>\$o{elec_r}, 'mark-r=f'=>\$o{mark_r}, 'elec-op=f'=>\$o{elec_op},
-    'axes=f'=>\$o{axes}, 'bem!'=>\$o{bem_on}, 'self-test'=>\$o{self_test},
+    'axes=f'=>\$o{axes}, 'bem-shells!'=>\$o{bem_on}, 'self-test'=>\$o{self_test},
 ) or die "bad args\n";
 
 # 近傍電極(名前 => MNI mm)。seek_ext_ear.pl の距離順上位。透明球で全部出す。
