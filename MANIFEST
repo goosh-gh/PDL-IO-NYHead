@@ -1,6 +1,9 @@
 Changes
 examples/check_nyhead.pl
 examples/nyhead_export.pl
+examples/nyhead_mri_panels.pl
+examples/nyhead_ortho.pl
+examples/nyhead_ortho_gs.pl
 lib/PDL/IO/NYHead.pm
 lib/PDL/IO/NYHead/H5Dump.pm
 Makefile.PL
