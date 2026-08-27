@@ -24,9 +24,10 @@ cell-of-strings helper.
 - `h5dump` (from the HDF5 tools) on `PATH` — **only** needed for the label
   fields (`electrode_labels`, `ho_labels`). Everything numeric works without it.
   MacPorts: `port install hdf5`.
-- `PDL::Graphics::Cairo` (giza) — **only** for the MRI viewers in `examples/`
-  (`nyhead_ortho_gs.pl` needs the interactive giza backend; the static
-  `nyhead_ortho.pl` / `nyhead_mri_panels.pl` render PNGs via Cairo).
+- `PDL::Graphics::Cairo` (giza) — **only** for the MRI viewers:
+  `tools/nyhead_ortho_gs.pl` needs the interactive giza backend; the static
+  `examples/nyhead_ortho.pl` / `examples/nyhead_mri_panels.pl` render PNGs via
+  Cairo.
 
 ## Install
 
@@ -79,6 +80,26 @@ automatically and only the border-connected external background is blanked, so
 internal air cavities survive for the cyan overlay. The default grayscale window
 is chosen by maximising the displayed-histogram entropy (auto-contrast).
 
+## Tools
+
+`tools/nyhead_ortho_gs.pl` — an interactive 2×2 ortho viewer (axial / coronal /
+sagittal) over the New York Head MRI, rendered through the giza backend of
+`PDL::Graphics::Cairo`. Clicking a slice moves the linked crosshair in all three
+panes and prints the clicked point as a ready-to-paste `--eec X,Y,Z` (MNI mm) on
+the terminal. The viewer's two native giza sliders set the grayscale window
+level (bottom) and width (right); `--zoom N` sets the initial magnification.
+Zoom is data-space: the full-resolution volume is re-sliced around the crosshair
+so more voxels appear instead of a magnified subsample, and while zoomed the
+fourth pane switches from the intensity histogram to a 3-plane overview showing
+the current zoom box. Internal air (external ear canal, sinuses, mastoid) is
+separated from the external background by connected components and overlaid in
+cyan. Electrodes — from `--nyhead <labels>` (via `electrode_labels` /
+`electrode_pos`) or explicit `--elec 'LABEL=x,y,z'` — are drawn as colored open
+circles, and each pane's bottom-right corner lists the 3-D straight-line
+distance from both the original `--eec` point and the current click point to
+each reference electrode, updated on every click while the original is retained.
+A headless `--self-test --probe` path renders to PNG without opening a window.
+
 ## See also
 
 `examples/nyhead_export.pl` — export any surface to OBJ or USDA
@@ -100,16 +121,6 @@ XYZ axis triad. `upAxis = "Z"`, `metersPerUnit = 0.001`.
 
 `examples/check_nyhead.pl` — runs the full reader against a real
 `sa_nyhead.mat` and prints a summary with PASS/FAIL structural checks.
-
-`examples/nyhead_ortho_gs.pl` — an interactive 2×2 ortho viewer (axial /
-coronal / sagittal + an intensity histogram) over the New York Head MRI,
-rendered through the giza backend of `PDL::Graphics::Cairo`. Clicking a slice
-moves the linked crosshair in all three panes and prints the clicked point as a
-ready-to-paste `--eec X,Y,Z` (MNI mm) on the terminal. Two native giza sliders
-set the grayscale window level and width; internal air (external ear canal,
-sinuses, mastoid) is separated from the external background by connected
-components and overlaid in cyan. Electrodes come from `--nyhead <labels>`
-(via `electrode_labels` / `electrode_pos`) or explicit `--elec 'LABEL=x,y,z'`.
 
 `examples/nyhead_ortho.pl` — the same 2×2 ortho view as a static PNG.
 `--click PANEL,fx,fy` (fx,fy = image fraction) resolves a click to its MNI mm
