@@ -26,8 +26,8 @@ WriteMakefile(
                 web  => 'https://github.com/goosh-gh/PDL-IO-NYHead',
             },
         },
-        # h5dump は CPAN 依存ではなく実行時の外部ツール(HDF5 tools)。
-        # 電極名/atlas 名(cell-of-strings)の読み取りにのみ必要。
+        # h5dump は CPAN 依存ではなく実行時の外部ツール(HDF5 tools)で、任意。
+        # 電極名/atlas 名(cell-of-strings)の読み取りに使い、無ければ PDL::IO::HDF5 の低水準関数で読む。
         prereqs => {
             runtime => {
                 requires   => {},

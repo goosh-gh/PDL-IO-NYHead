@@ -9,6 +9,7 @@
 #
 #   perl examples/check_nyhead.pl sa_nyhead.mat
 #   perl examples/check_nyhead.pl --h5dump /opt/local/bin/h5dump sa_nyhead.mat
+#   perl examples/check_nyhead.pl --strings lowlevel sa_nyhead.mat     # 名前を h5dump なしで読む
 # ============================================================================
 use strict;
 use warnings;
@@ -18,11 +19,13 @@ use Getopt::Long;
 use PDL;
 use PDL::IO::NYHead;
 
-my $h5dump = 'h5dump';
-GetOptions('h5dump=s' => \$h5dump) or die "bad args\n";
-my $file = shift @ARGV or die "usage: $0 [--h5dump PATH] <sa_nyhead.mat>\n";
+my ($h5dump, $strings) = ('h5dump', 'auto');
+GetOptions('h5dump=s' => \$h5dump, 'strings=s' => \$strings) or die "bad args\n";
+my $file = shift @ARGV
+    or die "usage: $0 [--h5dump PATH] [--strings auto|h5dump|lowlevel] <sa_nyhead.mat>\n";
 
-my $ny = PDL::IO::NYHead->new($file, h5dump => $h5dump);
+my $ny = PDL::IO::NYHead->new($file, h5dump => $h5dump, strings => $strings);
+printf "label fields read by: %s\n", $ny->strings_method;
 
 my ($pass, $fail) = (0, 0);
 sub check { my ($cond, $msg) = @_;

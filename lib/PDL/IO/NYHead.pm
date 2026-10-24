@@ -4,7 +4,7 @@ package PDL::IO::NYHead;
 #                     PDL::EEG に持ち込むためのトップレベル reader。
 #
 # 数値データセットは PDL::IO::HDF5 で、MATLAB cell-of-strings(電極名・HO野名)は
-# PDL::IO::NYHead::H5Dump(h5dump CLI 経由)で読む。両者を1つの OO API に統合する。
+# PDL::IO::NYHead::H5Dump(h5dump があれば h5dump、無ければ PDL::IO::HDF5 の低水準関数)で読む。両者を1つの OO API に統合する。
 #
 # ---- 軸規約(実測確定) ----------------------------------------------------
 #   HDF5/h5dump のシェイプ {A,B,...} は PDL では逆順 (...,B,A) で読まれる。
@@ -32,23 +32,36 @@ use PDL;
 use PDL::IO::HDF5;
 use PDL::IO::NYHead::H5Dump;
 
-our $VERSION = '0.01';
+our $VERSION = '0.03';
 
 # 19ch 対応(10-20)の 231ch モデル内 0-based index。P:EEG14 で sed 相互検証し凍結。
 # 並びは Fp1 Fp2 F3 F4 C3 C4 P3 P4 O1 O2 F7 F8 T7 T8 P7 P8 Fz Cz Pz。
 our @IDX19 = (156,157,119,115,159,116,120,222,19,48,20,223,182,178,220,179,183,168,169);
 
-# new($matfile, h5dump => 'h5dump')
+# new($matfile, h5dump => 'h5dump', strings => 'auto'|'h5dump'|'lowlevel')
+#   strings: 名前の列(cell-of-strings)の読み方。auto は h5dump が見つかれば h5dump、
+#            無ければ PDL::IO::HDF5 の低水準関数(PDL::IO::NYHead::H5Dump の説明)。
 sub new {
     my ($class, $file, %arg) = @_;
     defined $file && -r $file or croak "PDL::IO::NYHead: cannot read '$file'";
     my $self = {
         file   => $file,
         h5     => PDL::IO::HDF5->new($file),
-        h5dump => PDL::IO::NYHead::H5Dump->new(h5dump => $arg{h5dump} || 'h5dump'),
+        h5dump => PDL::IO::NYHead::H5Dump->new(h5dump => $arg{h5dump} || 'h5dump',
+                                               method => $arg{strings} // 'auto'),
         cache  => {},
     };
     return bless $self, $class;
+}
+
+# 名前の列の読み方('h5dump' か 'lowlevel')
+sub strings_method { $_[0]->{h5dump}->method }
+
+sub _cell_strings {
+    my ($self, $path) = @_;
+    return $self->strings_method eq 'lowlevel'
+         ? PDL::IO::NYHead::H5Dump::read_cell_strings_lowlevel($self->{h5}, $path)
+         : $self->{h5dump}->read_cell_strings($self->{file}, $path);
 }
 
 # ---- 低レベル: 数値データセット(キャッシュ付き) ----------------------------
@@ -60,8 +73,7 @@ sub _get {
 # ---- 電極 -----------------------------------------------------------------
 sub electrode_labels {                       # 231 個(cell-of-strings)
     my $self = shift;
-    return $self->{cache}{clab} //=
-        $self->{h5dump}->read_cell_strings($self->{file}, '/sa/clab_electrodes');
+    return $self->{cache}{clab} //= $self->_cell_strings('/sa/clab_electrodes');
 }
 sub electrode_pos { $_[0]->_get('/sa/locs_3D_orig') }   # (231,3) mm, MNI
 sub n_electrodes  { $_[0]->electrode_pos->dim(0) }
@@ -117,8 +129,7 @@ sub cortex {
 # ---- Harvard-Oxford atlas -------------------------------------------------
 sub ho_labels {                              # 97 個
     my $self = shift;
-    return $self->{cache}{ho} //=
-        $self->{h5dump}->read_cell_strings($self->{file}, '/sa/HO_labels');
+    return $self->{cache}{ho} //= $self->_cell_strings('/sa/HO_labels');
 }
 sub atlas_index {                            # (74382) 1-based(0=none)
     my $self = shift;
@@ -280,7 +291,10 @@ reverse of the h5dump shape; helpers return the natural PDL orientation.
 
 =head1 REQUIREMENTS
 
-L<PDL::IO::HDF5>, and the C<h5dump> executable for label fields.
+L<PDL::IO::HDF5>. Label fields (C<electrode_labels>, C<ho_labels>) use the
+C<h5dump> executable when it is found and otherwise the low-level functions of
+L<PDL::IO::HDF5>; C<< new($file, strings => 'h5dump'|'lowlevel') >> fixes the choice
+and C<strings_method> reports it.
 
 =head1 SEE ALSO
 

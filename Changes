@@ -1,5 +1,19 @@
 Revision history for PDL-IO-NYHead
 
+0.03  2026-10-24
+    - PDL::IO::NYHead::H5Dump: read_cell_strings falls back to the low-level
+      functions of PDL::IO::HDF5 (H5Dread of H5T_STD_REF_OBJ, H5Rdereference,
+      uint16 read) when h5dump is not found. new(method => 'auto'|'h5dump'|
+      'lowlevel'), method(), have_h5dump(), read_cell_strings_lowlevel().
+    - PDL::IO::NYHead: new($file, strings => ...) and strings_method().
+    - examples/check_nyhead.pl: --strings.
+    - examples/nyhead_electrodes_3d.pl (moved from PDL-EEG).
+    - examples/nyhead_neck_electrodes.pl: neck electrodes against the head mesh and the
+      leadfield rows and the RMS of differences of rows (bipolar neck leads); nearest
+      NYHead electrode to given points; --arc places points at lengths along the back
+      midline of the head mesh from Iz, cut at the cap of the mesh and extended.
+    - t/04_lowlevel.t.
+
 0.02  2026-07-23
     - Initial standalone release, split out of the PDL-EEG project.
     - PDL::IO::NYHead: OO reader for the New York Head (sa_nyhead.mat,

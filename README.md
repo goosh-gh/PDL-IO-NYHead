@@ -14,16 +14,20 @@ independently. It has no dependency on `PDL-EEG`.
 surfaces real numeric arrays: it does not traverse the nested `sa` struct and
 cannot decode MATLAB cell-of-strings (the electrode and atlas names, stored as
 HDF5 object references). This distribution reads numeric data with
-`PDL::IO::HDF5` and recovers the string fields via `h5dump`
-(`PDL::IO::NYHead::H5Dump`), which is a genuinely general MATLAB-v7.3
-cell-of-strings helper.
+`PDL::IO::HDF5` and recovers the string fields with `PDL::IO::NYHead::H5Dump`,
+a general MATLAB-v7.3 cell-of-strings helper: it uses `h5dump` when it is found,
+and otherwise reads the object references directly with the low-level functions
+of `PDL::IO::HDF5`.
 
 ## Requirements
 
 - PDL, PDL::IO::HDF5
-- `h5dump` (from the HDF5 tools) on `PATH` — **only** needed for the label
-  fields (`electrode_labels`, `ho_labels`). Everything numeric works without it.
-  MacPorts: `port install hdf5`.
+- `h5dump` (from the HDF5 tools) is optional. The label fields
+  (`electrode_labels`, `ho_labels`) are read with it when it is on `PATH` (or
+  given with `h5dump => PATH`), and with the low-level functions of
+  `PDL::IO::HDF5` otherwise. `PDL::IO::NYHead->new($file, strings => 'h5dump')`
+  or `strings => 'lowlevel'` fixes the choice; `$ny->strings_method` reports it.
+  Both give the same names on the bundled fixture (`t/04_lowlevel.t`).
 - `PDL::Graphics::Cairo` (giza) — **only** for the MRI viewers:
   `tools/nyhead_ortho_gs.pl` needs the interactive giza backend; the static
   `examples/nyhead_ortho.pl` / `examples/nyhead_mri_panels.pl` render PNGs via
@@ -120,7 +124,40 @@ spheres, and named target / candidate points opaque spheres, with an optional
 XYZ axis triad. `upAxis = "Z"`, `metersPerUnit = 0.001`.
 
 `examples/check_nyhead.pl` — runs the full reader against a real
-`sa_nyhead.mat` and prints a summary with PASS/FAIL structural checks.
+`sa_nyhead.mat` and prints a summary with PASS/FAIL structural checks
+(`--strings lowlevel` reads the names without `h5dump`).
+
+`examples/nyhead_electrodes_3d.pl` — shows the electrodes with their labels
+in the GS3D window of `PDL::Graphics::Cairo` (giza-server) over the scalp mesh
+(`--surface cortex10K` etc. for a cortex instead) and lists them with their
+`locs_3D_orig` coordinates: `--mark REGEX` colours electrodes by name, `--below
+MM` lists the electrodes behind y = 0 and lower than Iz + MM, `--only REGEX`
+limits the electrodes drawn. `--points TSV` / `--point NAME=X,Y,Z` add your own
+labelled points (e.g. neck electrode sites placed with
+`nyhead_neck_electrodes.pl --points-out`), each joined by a line to its nearest
+NYHead electrode (`--no-link` to leave out), together with the back-midline
+profile (green on the mesh, orange for its straight extension). `--list-only`
+prints the tables without opening a window.
+
+`examples/nyhead_neck_electrodes.pl` — for the neck electrodes (`Nk1`..`Nk4` by
+default): position, nearest head-mesh vertex and distance, height above the
+lowest head-mesh vertex, the leadfield row RMS relative to the median of all
+electrodes, and the correlation of the rows (across cortical sources) with
+chosen electrodes and with the nearest non-neck electrode. `--point NAME=X,Y,Z`
+prints the nearest NYHead electrodes to a point; with `--rename TSV --out TSV`
+they are added as columns to a channel table, and `--points-out TSV` writes
+the points and the profile for `nyhead_electrodes_3d.pl --points`. `--arc 'NAME=MM,...'` places points
+on the back midline of the head mesh (the cut by the plane x = 0) at lengths
+measured along it downwards from Iz (`--from`), as with a tape measure along the
+neck. The head mesh ends in the upper neck and is closed by a cap: the profile is
+cut where it first runs forward at less than 45° from the horizontal and is
+extended straight below that along the direction of its last 20 mm; points on
+the extension are marked. The neck electrodes are projected onto the profile
+(length along it and distance from it). For pairs of neck electrodes the script
+prints the correlation of the leadfield rows and the RMS of their difference,
+next to the same RMS for neighbouring scalp electrodes. `--selftest` checks the
+profile, the cut, the extension and the projection on a synthetic cone with a
+cap.
 
 `examples/nyhead_ortho.pl` — the same 2×2 ortho view as a static PNG.
 `--click PANEL,fx,fy` (fx,fy = image fraction) resolves a click to its MNI mm
