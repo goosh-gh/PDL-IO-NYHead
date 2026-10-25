@@ -8,6 +8,8 @@ transforms, and nearest-vertex lookup with a small, PDL-native API.
 This distribution was split out of the `PDL-EEG` project so it can be reused
 independently. It has no dependency on `PDL-EEG`.
 
+Version: 0.04 (`$PDL::IO::NYHead::VERSION`).
+
 ## Why not PDL::IO::Matlab?
 
 `PDL::IO::Matlab` (matio-backed) can open MAT v7.3 files, but its Perl API only
@@ -57,10 +59,33 @@ of `PDL::IO::HDF5`.
 
     my $iv = $ny->nearest_vertex($pos, 'head'); # each electrode -> scalp vertex
 
+    # leadfield rows at own points, interpolated from the rows of the electrodes
+    my ($rows, $W) = $ny->interp_rows(pdl([[0, -113, -114.5]]), kernel => 'r3');
+    # $rows (np,74382), $W (231,np); k => N uses the N nearest electrodes,
+    # exclude => [names] leaves electrodes out
+
     # export a surface to OBJ / USDA (USDA is Z-up MNI mm)
     $ny->write_mesh('cortex75K', 'obj',  'cortex.obj');
     $ny->write_mesh('head',      'usda', 'head.usda');
     $ny->write_mesh('cortex10K', 'usda', 'cortex.usda', axes => 90); # + XYZ axis triad
+
+## Interpolating leadfield rows
+
+`PDL::IO::NYHead::Interp` interpolates the leadfield row at any point from the
+rows of the electrodes: a 3-D polyharmonic radial basis function (`phi(r) = r`
+or `r^3`) with a linear term, so the weights depend only on the positions, sum
+to 1 and reproduce linear functions exactly, and an average-referenced row stays
+average-referenced. The weights `W (ne,np)` are applied to all sources with one
+matrix product (`interp_rows($L, $W)`). `loo` gives the leave-one-out error of
+each electrode's row (correlation over the sources and RMS error relative to the
+RMS of the row); `gap => G` leaves out, with each electrode, the electrodes
+closer to it than G mm, so that every electrode is interpolated from the
+spacing of a given point. With all electrodes it uses the closed form of
+Rippa (1999), extended to the left-out set (one inverse of the system instead
+of one solve per electrode; equal to the explicit solves to 1e-14 in
+`t/05_interp.t`). `t/05_interp.t` checks it on
+current-dipole fields over a sphere with a negative control (values unrelated
+to position).
 
 ## Axis convention
 
@@ -158,6 +183,29 @@ prints the correlation of the leadfield rows and the RMS of their difference,
 next to the same RMS for neighbouring scalp electrodes. `--selftest` checks the
 profile, the cut, the extension and the projection on a synthetic cone with a
 cap.
+
+`--along 'NAME,...'` (with `--arc`) projects NYHead electrodes onto the back
+midline profile and lists them, Iz and the `--arc` points by their length along
+it, with the skin distance (difference of the lengths) between every two of
+them.
+
+`examples/nyhead_interp_rows.pl` — leadfield rows at own points (`--point
+NAME=X,Y,Z`, or `--points TSV` such as the `--points-out` file above)
+interpolated from the 231 electrode rows (`--method r3:all` by default; `r` or
+`r3`, all electrodes or the N nearest). It prints, for each point, the nearest
+electrodes, whether the point lies below the lowest electrode or more than
+45 mm from any electrode (then marked as extrapolated), and the largest
+weights; the leave-one-out errors of every electrode for the `--methods`, by
+the distance to the nearest remaining electrode and one by one for `--show`;
+for each point the leave-one-out errors with a gap equal to the point's
+distance to its nearest electrode (RMS error relative to the median row RMS,
+median and 90th percentile, over all electrodes and over the lower back of the
+head), taken as the expected error of its row; and with `--pairs 'A-B,...'`
+(electrodes and points mixed) the distance, the correlation of the rows and the
+RMS of their difference relative to the median row RMS, with the expected error
+of the difference and its range over the `--methods`, next to the same RMS for
+neighbouring scalp electrodes. `--selftest`
+runs it on a synthetic sphere.
 
 `examples/nyhead_ortho.pl` — the same 2×2 ortho view as a static PNG.
 `--click PANEL,fx,fy` (fx,fy = image fraction) resolves a click to its MNI mm

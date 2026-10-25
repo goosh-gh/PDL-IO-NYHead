@@ -1,5 +1,19 @@
 Revision history for PDL-IO-NYHead
 
+0.04  2026-10-25
+    - PDL::IO::NYHead::Interp: leadfield rows at any point from the electrode rows
+      (3-D polyharmonic RBF, phi = r or r^3, with a linear term): interp_weights,
+      interp_rows, row_errors, loo (closed form of Rippa 1999 with all electrodes,
+      extended to leaving out the electrodes within gap => G mm), distances.
+    - PDL::IO::NYHead: interp_rows($pts, kernel =>, k =>, exclude => [names]).
+    - examples/nyhead_interp_rows.pl: rows at own points, leave-one-out errors (with a
+      gap equal to each point's spacing for the expected error of its row),
+      differences of rows for pairs of electrodes and points with their errors.
+    - examples/nyhead_neck_electrodes.pl: --along (skin distances along the back
+      midline profile).
+    - MANIFEST: examples/nyhead_points_usda.pl and the new files.
+    - t/05_interp.t, t/06_interp_mat.t.
+
 0.03  2026-10-24
     - PDL::IO::NYHead::H5Dump: read_cell_strings falls back to the low-level
       functions of PDL::IO::HDF5 (H5Dread of H5T_STD_REF_OBJ, H5Rdereference,

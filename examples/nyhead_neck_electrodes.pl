@@ -24,6 +24,10 @@
 #                    the skin downwards from the --from electrode (a tape measure along the
 #                    neck); each is then treated like a --point
 #   --from NAME      start of --arc                                       (Iz)
+#   --along LIST     with --arc: NYHead electrodes (NAME,...) to project onto the back midline
+#                    profile; they, the --from electrode and the --arc points are listed by
+#                    their length along the profile, with the skin distance (difference of
+#                    the lengths) between every two of them                (Exxz,Nk2)
 #   --points-out TSV write the --point / --arc points and the back midline profile (on the
 #                    mesh, and its extension down to 20 mm below the deepest --arc point) as
 #                    name, x, y, z, kind (point | profile_mesh | profile_extended), for
@@ -52,7 +56,10 @@
 #     below that it is extended straight along the direction of its last 20 mm.  Printed:
 #     the length of the profile on the mesh, the points at the given lengths (marked
 #     'extended' below the cut), and for every neck electrode its length along the profile
-#     (extension included) and its distance from it.  /sa/head is not the true outer skin,
+#     (extension included) and its distance from it.  Then the --from electrode, the --along
+#     electrodes and the --arc points in order of their length along the profile, and the
+#     table of skin distances between them (|difference of the lengths|; an electrode off the
+#     profile is taken at its projection, its distance from the profile is listed).  /sa/head is not the true outer skin,
 #     the NYHead neck posture is not that of a seated subject, and the extension is a
 #     straight line, so the points are approximate.
 
@@ -66,11 +73,11 @@ use PDL::IO::NYHead;
 
 my %o = (mat => "$ENV{HOME}/src/NYHead/sa_nyhead.mat", neck => '^Nk\d', compare => 'Iz,Oz,Cz,T7,T8,Fpz',
          point => [], rename => undef, out => undef, strings => 'auto', arc => '', from => 'Iz', selftest => 0,
-         points_out => undef);
+         points_out => undef, along => 'Exxz,Nk2');
 GetOptions('mat=s' => \$o{mat}, 'neck=s' => \$o{neck}, 'compare=s' => \$o{compare},
            'point=s@' => $o{point}, 'rename=s' => \$o{rename}, 'out=s' => \$o{out},
            'strings=s' => \$o{strings}, 'arc=s' => \$o{arc}, 'from=s' => \$o{from}, 'selftest' => \$o{selftest},
-           'points-out=s' => \$o{points_out})
+           'points-out=s' => \$o{points_out}, 'along=s' => \$o{along})
     or die "bad options (see the header of $0)\n";
 if ($o{selftest}) { selftest(); exit 0 }
 -f $o{mat} or die "not found: $o{mat} (give it with --mat)\n";
@@ -141,11 +148,11 @@ if (@neck) {
     }
     my (@nd, @ndist);                                        # every non-neck electrode minus its nearest non-neck neighbour
     my $pn = $pos->dice_axis(0, pdl(long, \@nn));
-    for my $a (0 .. $#nn) {
-        my $d2 = (($pn - $pn->slice("($a),")->dummy(0))**2)->mv(1, 0)->sumover;
-        $d2->set($a, 9e9);
-        my $b = $d2->minimum_ind->sclr;
-        push @nd, $drms->($nn[$a], $nn[$b]); push @ndist, sqrt($d2->at($b));
+    for my $ia (0 .. $#nn) {
+        my $d2 = (($pn - $pn->slice("($ia),")->dummy(0))**2)->mv(1, 0)->sumover;
+        $d2->set($ia, 9e9);
+        my $ib = $d2->minimum_ind->sclr;
+        push @nd, $drms->($nn[$ia], $nn[$ib]); push @ndist, sqrt($d2->at($ib));
     }
     my $ndp = pdl(\@nd);
     printf "  for comparison, each non-neck electrode - its nearest neighbour (median %.1f mm apart): diff median %.3f (%.3f .. %.3f)\n",
@@ -188,6 +195,28 @@ if ($o{arc} ne '') {
         my ($s, $d) = project_on_profile($prof, $len, $pos->slice("($i),"));
         printf "  %-6s at %.1f mm along the profile from %s%s, %.1f mm off it\n", $lab[$i], $s, $o{from},
             $s > $lmesh ? ' (extended part)' : '', $d;
+    }
+    # skin distances along the profile: --from, the --along electrodes, the --arc points
+    my @sites = ([ $o{from}, (project_on_profile($prof, $len, $p0))[0], 0, 'electrode' ]);
+    for my $n (grep { $_ ne '' && $_ ne $o{from} } split /,/, $o{along}) {
+        if (!exists $at{$n}) { print "  --along: no electrode named $n\n"; next }
+        my ($s, $d) = project_on_profile($prof, $len, $pos->slice("($at{$n}),"));
+        push @sites, [ $n, $s, $d, 'electrode' ];
+    }
+    for my $kv (split /,/, $o{arc}) {
+        my ($n, $mm) = split /=/, $kv;
+        push @sites, [ $n, $mm, 0, 'arc' ];
+    }
+    @sites = sort { $a->[1] <=> $b->[1] } @sites;
+    my $sl = pdl(map { $_->[1] } @sites);
+    my $sd = abs($sl->dummy(0) - $sl->dummy(1));                 # (n, n) skin distances
+    printf "\n  along the profile from %s (an electrode off the profile is taken at its projection)\n", $o{from};
+    printf "  %-6s %8s %8s  %s\n", 'site', 'length', 'off', 'kind';
+    printf "  %-6s %8.1f %8.1f  %s%s\n", $_->[0], $_->[1], $_->[2], $_->[3], $_->[1] > $lmesh ? ', extended part' : '' for @sites;
+    print "  skin distance between them along the profile (mm)\n";
+    printf "  %-6s%s\n", '', join('', map { sprintf '%8s', $_->[0] } @sites);
+    for my $r (0 .. $#sites) {
+        printf "  %-6s%s\n", $sites[$r][0], join('', map { sprintf '%8.1f', $sd->at($_, $r) } 0 .. $#sites);
     }
 }
 
@@ -245,13 +274,13 @@ sub back_profile {
     my $x0 = $p0->at(0);
     my @pts;
     for my $e ([0, 1], [1, 2], [2, 0]) {                     # the three edges of every triangle
-        my $a = $vc->dice_axis(0, $tri->slice(":,($e->[0])"));    # (nf, 3): first vertex of the edge
-        my $b = $vc->dice_axis(0, $tri->slice(":,($e->[1])"));
-        my ($xa, $xb) = ($a->slice(':,(0)') - $x0, $b->slice(':,(0)') - $x0);
+        my $va = $vc->dice_axis(0, $tri->slice(":,($e->[0])"));   # (nf, 3): first vertex of the edge
+        my $vb = $vc->dice_axis(0, $tri->slice(":,($e->[1])"));
+        my ($xa, $xb) = ($va->slice(':,(0)') - $x0, $vb->slice(':,(0)') - $x0);
         my $w = which($xa * $xb < 0);                         # edges that cross the plane
         next if $w->isempty;
         my $t = ($xa->index($w) / ($xa->index($w) - $xb->index($w)))->dummy(1);
-        push @pts, $a->dice_axis(0, $w) + $t * ($b->dice_axis(0, $w) - $a->dice_axis(0, $w));
+        push @pts, $va->dice_axis(0, $w) + $t * ($vb->dice_axis(0, $w) - $va->dice_axis(0, $w));
     }
     my $on = which(abs($vc->slice(':,(0)') - $x0) < 1e-9);   # vertices lying on the plane
     push @pts, $vc->dice_axis(0, $on) unless $on->isempty;

@@ -31,8 +31,9 @@ use Carp;
 use PDL;
 use PDL::IO::HDF5;
 use PDL::IO::NYHead::H5Dump;
+use PDL::IO::NYHead::Interp ();
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 # 19ch 対応(10-20)の 231ch モデル内 0-based index。P:EEG14 で sed 相互検証し凍結。
 # 並びは Fp1 Fp2 F3 F4 C3 C4 P3 P4 O1 O2 F7 F8 T7 T8 P7 P8 Fz Cz Pz。
@@ -91,6 +92,23 @@ sub electrode_labels_19 {                     # 19 個
 
 # ---- リードフィールド ------------------------------------------------------
 sub leadfield { $_[0]->_get('/sa/cortex75K/V_fem_normal') }   # (231,74382) 法線射影 CAR
+# interp_rows($pts (np,3) MNI mm, %opt) -> ($rows (np,74382), $W (231,np)) / スカラ文脈では $rows
+#   任意の点の導出行列の行を、電極の行の重み付きの和で内挿する(PDL::IO::NYHead::Interp)。
+#   kernel => 'r'|'r3'、k => N(近い N 本だけ)、exclude => [名前 か 0 始まりの添字, ...]、
+#   leadfield => $L(読み込み済みの (231,ns) を渡すと読み直さない)
+sub interp_rows {
+    my ($self, $pts, %opt) = @_;
+    my $L = delete $opt{leadfield} // $self->leadfield;
+    if ($opt{exclude} && grep { !/^\d+$/ } @{ $opt{exclude} }) {
+        my @lab = @{ $self->electrode_labels };
+        my %at; @at{@lab} = 0 .. $#lab;
+        $opt{exclude} = [ map { /^\d+$/ ? $_ : ($at{$_} // croak "interp_rows: no electrode named $_") } @{ $opt{exclude} } ];
+    }
+    my $W = PDL::IO::NYHead::Interp::interp_weights($self->electrode_pos, $pts, %opt);
+    my $R = PDL::IO::NYHead::Interp::interp_rows($L, $W);
+    return wantarray ? ($R, $W) : $R;
+}
+
 sub leadfield_full { $_[0]->_get('/sa/cortex75K/V_fem') }     # (231,74382,3) 3成分(巨大)
 sub leadfield_19 {                                            # (19,74382)
     my $self = shift;
@@ -282,6 +300,10 @@ PDL::IO::NYHead - read the New York Head (sa_nyhead.mat) into PDL for PDL::EEG
     print $ny->area_of_vertex(1234);          # e.g. 'Left Frontal Pole'
 
     my $iv = $ny->nearest_vertex($pos, 'head'); # each electrode -> nearest scalp vertex
+
+    # leadfield rows at own points, interpolated from the electrode rows
+    # (PDL::IO::NYHead::Interp; kernel 'r' or 'r3', k nearest, exclude by name)
+    my ($rows, $W) = $ny->interp_rows(pdl([[0, -113, -114.5]]), kernel => 'r3');   # (1,74382), (231,1)
 
 =head1 DESCRIPTION
 

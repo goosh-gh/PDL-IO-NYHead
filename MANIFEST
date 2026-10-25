@@ -4,13 +4,16 @@ examples/dump_h5_cell.pl
 examples/nyhead_ear_usda.pl
 examples/nyhead_electrodes_3d.pl
 examples/nyhead_export.pl
+examples/nyhead_interp_rows.pl
 examples/nyhead_mri_panels.pl
 examples/nyhead_mri_to_nii.pl
 examples/nyhead_neck_electrodes.pl
 examples/nyhead_ortho.pl
+examples/nyhead_points_usda.pl
 examples/seek_ext_ear.pl
 lib/PDL/IO/NYHead.pm
 lib/PDL/IO/NYHead/H5Dump.pm
+lib/PDL/IO/NYHead/Interp.pm
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
@@ -20,5 +23,7 @@ t/01_nyhead.t
 t/02_h5dump.t
 t/03_export.t
 t/04_lowlevel.t
+t/05_interp.t
+t/06_interp_mat.t
 t/data/mini_nyhead.mat
 tools/nyhead_ortho_gs.pl
