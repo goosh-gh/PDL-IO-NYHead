@@ -18,7 +18,9 @@
 #   --points TSV     自前の点を加える: name, x, y, z[, kind](MNI mm、タブ区切り。
 #                    nyhead_neck_electrodes.pl --points-out の出力)。kind が point の行は
 #                    名前つきの点(ピンク系)として、profile_mesh / profile_extended の行は
-#                    首の後ろの正中の線(緑 = メッシュ上、橙 = まっすぐの延長)として描く
+#                    首の後ろの正中の線(緑 = メッシュ上、橙 = 延長。まっすぐ、または
+#                    --extend-with のアトラスの曲線)として、level の行(--extend-with で置いた
+#                    椎骨の棘突起の高さの皮膚の点)は水色の名前つきの点として描く(最も近い電極への線なし)
 #   --point N=X,Y,Z  自前の点をもう 1 つ(複数可)
 #   --link           自前の点と最も近い NYHead 電極を細線で結ぶ(既定 on、--no-link で外す)
 #   --surface NAME   GS3D の面: head | cortex75K | cortex10K | ... (head)。面は 1 枚だけ
@@ -29,7 +31,7 @@
 #   electrode_pos(/sa/locs_3D_orig、(231,3) MNI mm)、surface('head')(頭皮メッシュ、tri0 = 0 始まり)。
 #
 # 色: 左=オレンジ、右=シアン、正中(|x| < 5 mm)=白、--below の対象=マゼンタ、--mark=黄、
-#     自前の点(--points / --point)=ピンク系。
+#     自前の点(--points / --point)=ピンク系、椎骨の高さ(kind level)=水色。
 # GS3D の窓の File → Export 3D as OBJ/USDA… で、表示中のシーン(面、点、ラベルの文字)を
 # .usda に書き出せる(PDL::Graphics::Cairo::SceneExport。Cocoa の giza-server のみ)。
 # 表示の流儀は PDL-EEG の examples/show_electrodes_3d.pl と同じ(TriD = Advent 2024 Day 12 の
@@ -98,7 +100,7 @@ for (my $i = 0; $i < $n; $i += 12) {
 }
 
 # ---- own points, the back-midline profile, links -----------------------------------------
-my (@own, @prof);                                  # [name, x, y, z]; [x, y, z, mesh|extended]
+my (@own, @prof, @lev);                            # [name, x, y, z]; [x, y, z, mesh|extended]; [name, x, y, z]
 for my $f (@{ $o{points} }) {
     open my $fh, '<', $f or die "$f: $!";
     while (<$fh>) {
@@ -108,6 +110,7 @@ for my $f (@{ $o{points} }) {
         $k //= 'point';
         if    ($k eq 'point')                     { push @own,  [$nm, $x, $y, $z] }
         elsif ($k =~ /^profile_(mesh|extended)$/) { push @prof, [$x, $y, $z, $1] }
+        elsif ($k eq 'level')                     { push @lev,  [$nm, $x, $y, $z] }
         else  { die "$f: unknown kind '$k'\n" }
     }
 }
@@ -138,12 +141,17 @@ exit 0 if $o{list_only};
 # what the window shows: the NYHead electrodes (all, or --only), then the own points
 my @show = defined $o{only} ? grep { $lab[$_] =~ /$o{only}/ } 0 .. $n - 1 : 0 .. $n - 1;
 @show or die "--only /$o{only}/ matches no electrode\n";
-my @plab = (@lab[@show], map { $_->[0] } @own);
+my @plab = (@lab[@show], map { $_->[0] } @own, @lev);
 my $pxyz = $xyz->dice_axis(0, pdl(long, \@show));
 my $prgb = $rgb->dice_axis(0, pdl(long, \@show));
 if (@own) {
     $pxyz = $pxyz->glue(0, pdl([ map { [ @$_[1 .. 3] ] } @own ])->transpose);
     $prgb = $prgb->glue(0, pdl([ map { $pal[ $_ % @pal ] } 0 .. $#own ])->transpose);
+}
+if (@lev) {
+    $pxyz = $pxyz->glue(0, pdl([ map { [ @$_[1 .. 3] ] } @lev ])->transpose);
+    $prgb = $prgb->glue(0, pdl([ map { [0.55, 0.80, 1.0] } @lev ])->transpose);
+    printf "\nvertebral levels (kind level): %s\n", join(' ', map { $_->[0] } @lev);
 }
 my $plines = @lines ? pdl(\@lines)->transpose->sever : undef;     # (M, 9)
 

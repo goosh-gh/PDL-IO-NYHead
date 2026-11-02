@@ -161,7 +161,8 @@ limits the electrodes drawn. `--points TSV` / `--point NAME=X,Y,Z` add your own
 labelled points (e.g. neck electrode sites placed with
 `nyhead_neck_electrodes.pl --points-out`), each joined by a line to its nearest
 NYHead electrode (`--no-link` to leave out), together with the back-midline
-profile (green on the mesh, orange for its straight extension). `--list-only`
+profile (green on the mesh, orange for its extension) and rows of kind `level`
+(vertebral levels, light blue, without links). `--list-only`
 prints the tables without opening a window.
 
 `examples/nyhead_neck_electrodes.pl` — for the neck electrodes (`Nk1`..`Nk4` by
@@ -182,7 +183,14 @@ the extension are marked. The neck electrodes are projected onto the profile
 prints the correlation of the leadfield rows and the RMS of their difference,
 next to the same RMS for neighbouring scalp electrodes. `--selftest` checks the
 profile, the cut, the extension and the projection on a synthetic cone with a
-cap.
+cap. `--extend-with TSV` (the `PREFIX_neck_profile.tsv` of PDL-EEG
+`examples/atlas_neck_levels.pl`) extends the profile below the mesh along the
+back outline of an anatomy atlas instead of a straight line: the atlas outline
+is turned and moved (not scaled) to fit the mesh profile from `--fit-from` mm
+(default 10) to the end of the mesh, and joined there; the fit (turn, RMS, gap)
+is printed, and the atlas levels are put on the profile at their lengths with
+their nearest NYHead electrodes (written with `--points-out` as kind `level`).
+The selftest checks the extension against a known bent back line.
 
 `--along 'NAME,...'` (with `--arc`) projects NYHead electrodes onto the back
 midline profile and lists them, Iz and the `--arc` points by their length along

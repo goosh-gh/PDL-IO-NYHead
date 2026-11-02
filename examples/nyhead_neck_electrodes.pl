@@ -8,6 +8,7 @@
 #   perl examples/nyhead_neck_electrodes.pl --mat ... --point 'Cv12=0,-95,-60' --point 'Th12=0,-110,-200'
 #   perl examples/nyhead_neck_electrodes.pl --mat ... --point ... --rename YJ0394VB_rename.tsv --out new.tsv
 #   perl examples/nyhead_neck_electrodes.pl --mat ... --arc 'Cv12=85,Cv45=125,BN1=165,Th12=200'
+#   perl examples/nyhead_neck_electrodes.pl --mat ... --arc '...' --extend-with atlas_neck_profile.tsv --points-out pts.tsv
 #   perl examples/nyhead_neck_electrodes.pl --selftest        # synthetic mesh, no .mat needed
 #
 #   --mat FILE       sa_nyhead.mat                                        (~/src/NYHead/sa_nyhead.mat)
@@ -32,6 +33,15 @@
 #                    mesh, and its extension down to 20 mm below the deepest --arc point) as
 #                    name, x, y, z, kind (point | profile_mesh | profile_extended), for
 #                    nyhead_points_usda.pl
+#   --extend-with TSV with --arc: below the mesh, follow the back outline of an atlas instead
+#                    of a straight line (PDL-EEG examples/atlas_neck_levels.pl: rows name, s_mm,
+#                    y_mm, z_mm, kind = profile | level).  The atlas outline is turned and moved
+#                    (not scaled: its lengths are the subject's, set there by --c7-mm) to fit the
+#                    mesh profile between --fit-from and the end of the mesh, point for point at
+#                    equal lengths, and joined at the end of the mesh; its level rows (spinous
+#                    processes) are put on the profile at their lengths and listed (and written
+#                    with --points-out as kind level)
+#   --fit-from MM    start of the fitted stretch, mm from --from             (10)
 #   --strings S      auto | h5dump | lowlevel (how the names are read)    (auto)
 #
 # Printed:
@@ -61,7 +71,11 @@
 #     table of skin distances between them (|difference of the lengths|; an electrode off the
 #     profile is taken at its projection, its distance from the profile is listed).  /sa/head is not the true outer skin,
 #     the NYHead neck posture is not that of a seated subject, and the extension is a
-#     straight line, so the points are approximate.
+#     straight line, so the points are approximate.  With --extend-with the extension follows
+#     the atlas outline; printed: the turn of the atlas, the RMS distance of the fitted stretch,
+#     the gap at the join, and the atlas levels on the profile with their nearest electrodes.
+#     The atlas is another person (and the posture of a 3-D model), so the levels are where that
+#     person's spinous processes would fall on this profile, not NYHead anatomy.
 
 use strict;
 use warnings;
@@ -73,15 +87,17 @@ use PDL::IO::NYHead;
 
 my %o = (mat => "$ENV{HOME}/src/NYHead/sa_nyhead.mat", neck => '^Nk\d', compare => 'Iz,Oz,Cz,T7,T8,Fpz',
          point => [], rename => undef, out => undef, strings => 'auto', arc => '', from => 'Iz', selftest => 0,
-         points_out => undef, along => 'Exxz,Nk2');
+         points_out => undef, along => 'Exxz,Nk2', extend_with => undef, fit_from => 10);
 GetOptions('mat=s' => \$o{mat}, 'neck=s' => \$o{neck}, 'compare=s' => \$o{compare},
            'point=s@' => $o{point}, 'rename=s' => \$o{rename}, 'out=s' => \$o{out},
            'strings=s' => \$o{strings}, 'arc=s' => \$o{arc}, 'from=s' => \$o{from}, 'selftest' => \$o{selftest},
-           'points-out=s' => \$o{points_out}, 'along=s' => \$o{along})
+           'points-out=s' => \$o{points_out}, 'along=s' => \$o{along},
+           'extend-with=s' => \$o{extend_with}, 'fit-from=f' => \$o{fit_from})
     or die "bad options (see the header of $0)\n";
 if ($o{selftest}) { selftest(); exit 0 }
 -f $o{mat} or die "not found: $o{mat} (give it with --mat)\n";
 defined $o{rename} == defined $o{out} or die "--rename and --out go together\n";
+!defined $o{extend_with} || $o{arc} ne '' or die "--extend-with goes with --arc\n";
 
 my $ny  = PDL::IO::NYHead->new($o{mat}, strings => $o{strings});
 my @lab = @{ $ny->electrode_labels };
@@ -169,28 +185,60 @@ if ($o{arc} ne '') {
     my $p0 = $pos->slice("($at{$o{from}}),");
     my ($full, $flen) = back_profile($vc, $hd->{tri0}, $p0);     # (np, 3), (np)
     my ($prof, $len, $lmesh, $u) = extend_profile($full, $flen);
+    my $deep = 0;
+    for my $kv (split /,/, $o{arc}) { my (undef, $mm) = split /=/, $kv; $deep = $mm if $mm > $deep }
+    my ($atlas, $fit);
+    if (defined $o{extend_with}) {
+        $atlas = read_atlas_profile($o{extend_with});
+        ($prof, $len, $fit) = extend_with_atlas($prof->slice('0:-2,:'), $len->slice('0:-2'), $lmesh, $atlas, $o{fit_from}, $deep + 40);
+    }
     printf "\n-- 4. back midline of the head mesh from %s (%.1f %.1f %.1f)\n", $o{from}, $p0->list;
     printf "  %s is %.1f mm off the mesh profile start (%.1f %.1f %.1f)\n", $o{from},
         sqrt((($prof->slice('(0),') - $p0)**2)->sum), $prof->slice('(0),')->list;
     printf "  on the mesh: %.1f mm down to (y %.1f, z %.1f); below that the mesh cap (the mesh profile went on for %.1f mm, to z %.1f)\n",
         $lmesh, _at_len($prof, $len, $lmesh)->at(1), _at_len($prof, $len, $lmesh)->at(2), $flen->at(-1) - $lmesh, $full->at(-1, 2);
-    printf "  extended straight below that, direction (y %+.2f, z %+.2f) per mm (%.0f deg from vertical)\n",
-        $u->at(1), $u->at(2), 57.29578 * atan2(abs($u->at(1)), abs($u->at(2)));
+    if ($fit) {
+        printf "  extended along the atlas outline %s (to %.0f mm): turned by %+.1f deg, fitted %.0f .. %.1f mm, RMS %.1f mm (max %.1f), gap at the join %.1f mm\n",
+            $o{extend_with}, $len->at(-1), $fit->{deg}, $o{fit_from}, $lmesh, $fit->{rms}, $fit->{max}, $fit->{gap};
+        printf "  (the straight extension would go (y %+.2f, z %+.2f) per mm, %.0f deg from vertical)\n",
+            $u->at(1), $u->at(2), 57.29578 * atan2(abs($u->at(1)), abs($u->at(2)));
+    }
+    else {
+        printf "  extended straight below that, direction (y %+.2f, z %+.2f) per mm (%.0f deg from vertical)\n",
+            $u->at(1), $u->at(2), 57.29578 * atan2(abs($u->at(1)), abs($u->at(2)));
+    }
     print "  the profile every 20 mm: ", join('  ', map { my $q = _at_len($prof, $len, $_); sprintf '%d%s (%.0f %.0f)', $_, $_ > $lmesh ? '*' : '', $q->at(1), $q->at(2) }
-        map { 20 * $_ } 0 .. 11), "  [mm: (y z)], * extended\n";
+        grep { $_ <= $len->at(-1) } map { 20 * $_ } 0 .. 11), "  [mm: (y z)], * extended\n";
+    my $ext_how = $fit ? 'atlas outline' : 'straight';
     for my $kv (split /,/, $o{arc}) {
         my ($n, $mm) = $kv =~ /^([^=]+)=([\d.]+)$/ or die "--arc NAME=MM, not '$kv'\n";
         my $q = _at_len($prof, $len, $mm);
-        printf "  %-6s %5.0f mm: (%.1f %.1f %.1f)%s\n", $n, $mm, $q->list, $mm > $lmesh ? sprintf('  extended (%.0f mm below the mesh)', $mm - $lmesh) : '';
+        $mm <= $len->at(-1) or die sprintf "--arc %s=%s: beyond the end of the profile (%.0f mm)\n", $n, $mm, $len->at(-1);
+        printf "  %-6s %5.0f mm: (%.1f %.1f %.1f)%s\n", $n, $mm, $q->list, $mm > $lmesh ? sprintf('  extended, %s (%.0f mm below the mesh)', $ext_how, $mm - $lmesh) : '';
         push @{ $o{point} }, sprintf '%s=%.2f,%.2f,%.2f', $n, $q->list;
-        $how{$n} = $mm > $lmesh ? sprintf('arc %g mm, extended', $mm) : sprintf('arc %g mm, on the mesh', $mm);
+        $how{$n} = $mm > $lmesh ? sprintf('arc %g mm, extended (%s)', $mm, $ext_how) : sprintf('arc %g mm, on the mesh', $mm);
     }
-    my $deep = 0;
-    for my $kv (split /,/, $o{arc}) { my (undef, $mm) = split /=/, $kv; $deep = $mm if $mm > $deep }
-    for my $k (0 .. $prof->dim(0) - 2) {                         # the mesh part (the last row is the extension end)
-        push @profile_rows, [ sprintf('profile%03d', $k), $prof->slice("($k),")->list, 'profile_mesh' ];
+    my @lk = $len->list;
+    for my $k (0 .. $#lk) {                                      # the mesh part, then the extension
+        if ($lk[$k] <= $lmesh) { push @profile_rows, [ sprintf('profile%03d', $k), $prof->slice("($k),")->list, 'profile_mesh' ] }
+        elsif ($fit && $lk[$k] <= $deep + 20) { push @profile_rows, [ sprintf('profile%03d', $k), $prof->slice("($k),")->list, 'profile_extended' ] }
     }
-    push @profile_rows, [ 'profile_end', _at_len($prof, $len, $deep + 20)->list, 'profile_extended' ] if $deep + 20 > $lmesh;
+    push @profile_rows, [ 'profile_end', _at_len($prof, $len, $deep + 20)->list, 'profile_extended' ] if !$fit && $deep + 20 > $lmesh;
+    if ($fit) {                                                  # the atlas levels on the profile
+        printf "\n  atlas levels (spinous processes of the atlas person) at their lengths from %s on this profile\n", $o{from};
+        printf "  %-5s %8s  %-22s %s\n", 'level', 'length', 'point (MNI mm)', 'nearest NYHead electrodes';
+        for my $lv (@{ $atlas->{levels} }) {
+            my ($n, $s) = @$lv;
+            next if $s < 0;
+            if ($s > $len->at(-1)) { printf "  %-5s %6.1f mm  beyond the profile\n", $n, $s; next }
+            my $q = _at_len($prof, $len, $s);
+            my $d = sqrt((($pos - $q->dummy(0))**2)->mv(1, 0)->sumover);
+            my @o2 = ($d->qsorti->list)[0 .. 1];
+            printf "  %-5s %6.1f mm  (%6.1f %6.1f %6.1f)  %s%s\n", $n, $s, $q->list,
+                join('  ', map { sprintf '%s %.1f mm', $lab[$_], $d->at($_) } @o2), $s > $lmesh ? '   (atlas outline)' : '';
+            push @profile_rows, [ "atlas_$n", $q->list, 'level' ];
+        }
+    }
     for my $i (@neck) {                                          # neck electrodes against the profile
         my ($s, $d) = project_on_profile($prof, $len, $pos->slice("($i),"));
         printf "  %-6s at %.1f mm along the profile from %s%s, %.1f mm off it\n", $lab[$i], $s, $o{from},
@@ -341,6 +389,63 @@ sub project_on_profile {
     return ($len->at($k) + $t->at($k) * sqrt($l2->at($k)), $dd->at($k));
 }
 
+# read_atlas_profile($tsv): the outline rows (kind profile) as s, y, z (n) sorted by s, and the
+# level rows as [name, s]
+sub read_atlas_profile {
+    my ($f) = @_;
+    open my $fh, '<', $f or die "$f: $!";
+    my (@p, @lev);
+    while (<$fh>) {
+        chomp; next if /^\s*(#|$)/;
+        my ($n, $s, $y, $z, $k) = split /\t/;
+        next if $n eq 'name';
+        defined $k or die "$f: name, s_mm, y_mm, z_mm, kind expected\n";
+        if    ($k eq 'profile') { push @p, [$s, $y, $z] }
+        elsif ($k eq 'level')   { push @lev, [$n, $s] }
+    }
+    @p >= 10 or die "$f: fewer than 10 profile rows\n";
+    my $P  = pdl(\@p);                                            # (3, n)
+    my $ix = $P->slice('(0),')->qsorti;
+    my ($s, $y, $z) = map { $P->slice("($_),")->index($ix)->sever } 0 .. 2;
+    return { s => $s, y => $y, z => $z, levels => [ sort { $a->[1] <=> $b->[1] } @lev ] };
+}
+
+# extend_with_atlas($pm (k,3) mesh profile, $lm (k) its lengths, $lmesh, $atlas, $from, $smax):
+# the atlas outline (y forward, z up, as functions of the length s) turned by the angle that
+# best fits it (least squares, then moved by the difference of the centroids) to the mesh
+# profile at 61 equal lengths between $from and $lmesh, and appended from the end of the mesh
+# every 1 mm down to $smax (or the end of the atlas outline), starting at the end of the mesh.
+# Returns (profile, lengths, {deg, rms, max, gap}).
+sub extend_with_atlas {
+    my ($pm, $lm, $lmesh, $A, $from, $smax) = @_;
+    $from < $lmesh - 10 or die "--fit-from $from: less than 10 mm of mesh profile to fit\n";
+    $A->{s}->min <= $from or die sprintf "the atlas outline starts at %.1f mm, after --fit-from %g\n", $A->{s}->min, $from;
+    $smax = $A->{s}->max if $smax > $A->{s}->max;
+    $smax > $lmesh + 1 or die sprintf "the atlas outline ends at %.1f mm, before the end of the mesh (%.1f mm)\n", $A->{s}->max, $lmesh;
+    my $s  = $from + sequence(61) / 60 * ($lmesh - $from);
+    my $M  = cat(map { interpol($s, $lm, $pm->slice(":,($_)")) } 1, 2);       # (61,2): mesh (y, z)
+    my $Aa = cat(map { interpol($s, $A->{s}, $A->{$_}) } 'y', 'z');           # (61,2): atlas (y, z)
+    my ($mc, $ac) = ($M->average, $Aa->average);                               # (2): centroids (dim 0 = points)
+    my ($M0, $A0) = ($M - $mc->dummy(0), $Aa - $ac->dummy(0));
+    my ($ay, $az, $my_, $mz) = ($A0->slice(':,(0)'), $A0->slice(':,(1)'), $M0->slice(':,(0)'), $M0->slice(':,(1)'));
+    my $th = atan2(($ay * $mz - $az * $my_)->sum, ($ay * $my_ + $az * $mz)->sum)->sclr;
+    my ($c, $sn) = (cos($th), sin($th));
+    my $rot = sub { my ($v) = @_;                                              # (n,2) turned by th
+        cat($c * $v->slice(':,(0)') - $sn * $v->slice(':,(1)'), $sn * $v->slice(':,(0)') + $c * $v->slice(':,(1)')) };
+    my $res = sqrt((($rot->($A0) - $M0)**2)->mv(1, 0)->sumover);               # (61)
+    my $pend = $pm->slice('(-1),');                                            # the end of the mesh (x, y, z)
+    my $aend = cat(map { interpol(pdl([$lmesh]), $A->{s}, $A->{$_}) } 'y', 'z');  # (1,2)
+    my $gap  = sqrt((($rot->($aend - $ac->dummy(0)) + $mc->dummy(0) - $pend->slice('1:2')->dummy(0))**2)->sum)->sclr;
+    my $se = $lmesh + 1 + sequence(int($smax - $lmesh - 1) + 1);              # every 1 mm below the mesh
+    my $Ae = cat(map { interpol($se, $A->{s}, $A->{$_}) } 'y', 'z');           # (ne,2)
+    my $De = $rot->($Ae - $aend);                                              # (ne,2): from the join
+    my $ext = zeroes($se->nelem, 3);
+    $ext->slice(':,(0)') .= $pend->at(0);
+    $ext->slice(':,1:2') .= $De + $pend->slice('1:2')->dummy(0);
+    return ($pm->glue(0, $ext)->sever, $lm->append($se)->sever,
+            { deg => 57.29578 * $th, rms => sqrt(($res**2)->avg)->sclr, max => $res->max->sclr, gap => $gap });
+}
+
 sub _at_len {                                                 # point at length $s on the profile
     my ($prof, $len, $s) = @_;
     my $k = which($len <= $s)->max;
@@ -405,5 +510,42 @@ sub _selftest_cone {
     $chk->(abs($q->at(2) + 85 / $k) < 0.2 && abs($q->at(1) + 50 + 0.5 * 85 / $k) < 0.3 && abs($q->at(0)) < 1e-9,
         sprintf 'point at 85 mm: (%.2f %.2f %.2f), expected (0 %.2f %.2f)', $q->list, -(50 + 0.5 * 85 / $k), -85 / $k);
     $chk->(all($prof->slice(':,(1)') < 0), 'the profile stays on the back (y < 0)');
+    # --extend-with: a true back line that follows the cone down to 100 k mm and then bends
+    # backwards on a circle of radius 60 mm; the "atlas" is that line turned by -30 deg and
+    # moved.  After the fit the extension must lie on the true line.
+    my $Lm = 100 * $k;
+    my $phi0 = atan2(-1, -0.5);
+    my $true = sub {                                          # (s) -> (y, z) of the true line
+        my ($s) = @_;
+        $s = pdl($s)->double;
+        my $sc = $s->clip(undef, $Lm); my $sb = ($s - $Lm)->clip(0, undef);
+        my ($y, $z) = (-50 - 0.5 * $sc / $k, -$sc / $k);
+        my $phi = $phi0 - $sb / 60;                           # turning towards the back (y more negative)
+        return ($y - 60 * (sin($phi) - sin($phi0)), $z + 60 * (cos($phi) - cos($phi0)));
+    };
+    my $sa = sequence(226) - 5;                               # -5 .. 220 mm
+    my ($ty, $tz) = $true->($sa);
+    my $a = -30 / 57.29578;
+    my ($ay, $az) = (cos($a) * ($ty + 50) - sin($a) * $tz + 5, sin($a) * ($ty + 50) + cos($a) * $tz + 7);
+    my $tsv = "/tmp/nyhead_neck_selftest_$$.tsv";
+    open my $fo, '>', $tsv or die "$tsv: $!";
+    print $fo join("\t", qw(name s_mm y_mm z_mm kind)), "\n";
+    printf $fo "L%d\t%.3f\t0\t0\tlevel\n", @$_ for [1, 50], [2, 150];
+    printf $fo "p%04d\t%.4f\t%.4f\t%.4f\tprofile\n", $_, $sa->at($_), $ay->at($_), $az->at($_) for 0 .. $sa->nelem - 1;
+    close $fo;
+    my $A = read_atlas_profile($tsv);
+    unlink $tsv;
+    my ($pa, $la, $fit) = extend_with_atlas($prof->slice('0:-2,:'), $len->slice('0:-2'), $lmesh, $A, 10, 210);
+    $chk->(@{ $A->{levels} } == 2 && $A->{s}->nelem == 226, 'atlas TSV read: 226 outline rows, 2 levels');
+    $chk->(abs($fit->{deg} - 30) < 0.5 && $fit->{rms} < 0.3 && $fit->{gap} < 0.5,
+        sprintf 'atlas fit: turned %+.2f deg (expected +30), RMS %.2f mm, gap %.2f mm', $fit->{deg}, $fit->{rms}, $fit->{gap});
+    for my $sx (150, 200) {
+        my $q = _at_len($pa, $la, $sx);
+        my ($y, $z) = $true->($sx);
+        my $e = sqrt(($q->at(1) - $y->sclr)**2 + ($q->at(2) - $z->sclr)**2);
+        my $qs = _at_len($prof, $len, $sx);                   # the straight extension, for comparison
+        my $es = sqrt(($qs->at(1) - $y->sclr)**2 + ($qs->at(2) - $z->sclr)**2);
+        $chk->($e < 1 && abs($q->at(0)) < 1e-9, sprintf 'atlas extension at %d mm: %.2f mm from the true line (the straight one %.1f mm)', $sx, $e, $es);
+    }
     return $ok;
 }
